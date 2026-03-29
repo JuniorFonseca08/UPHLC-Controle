@@ -211,7 +211,7 @@ def pagar_mensalidade(membro_id: str, mes: int, ano: int, valor: float):
 
     mes_formatado = nomes_mes[mes - 1]
 
-    descricao = f"Mensalidade - {nome_membro} ({mes_formatado}/{ano})"
+    descricao = f"{nome_membro} - {mes_formatado}/{ano}"
 
     # 🔹 salva mensalidade
     mensalidades_sheet.append_row([
