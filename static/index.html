@@ -953,15 +953,35 @@ function fecharHistoricoPorOverlay(e) {
     document.getElementById("modalHistorico").classList.remove("open");
 }
 
+function fecharHistorico() {
+  document.getElementById("modalHistorico").classList.remove("open");
+}
+
 async function abrirHistorico() {
   const modal = document.getElementById("modalHistorico");
   const content = document.getElementById("historicoContent");
   const hoje = new Date();
 
   content.innerHTML = `
-    <div class="modal-header">
-      <div class="modal-header-icon" style="background:#e8f0ea">📋</div>
-      <div class="modal-title">Movimentações</div>
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="modal-header-icon" style="background:#e8f0ea">📋</div>
+        <div class="modal-title">Movimentações</div>
+      </div>
+    
+    <button onclick="fecharHistorico()" style="
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #f1f1f1;
+      color: #444;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    ">
+      ❌
+    </button>
     </div>
     <div class="hist-filtros">
       <select id="filtroMes" onchange="filtrarHistorico()">
