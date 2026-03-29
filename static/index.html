@@ -642,6 +642,12 @@
 <script>
 let mesesSelecionados = [];
 
+// ⚡ Executa quando a página termina de carregar
+document.addEventListener("DOMContentLoaded", () => {
+  // carrega membros e atualiza apenas a contagem
+  carregarMembros(() => {}); // callback vazio, pois ainda não estamos selecionando meses
+});
+
 const d = new Date();
 const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 document.getElementById("headerDate").innerHTML =
@@ -669,20 +675,20 @@ function abrirModal(tipo) {
   }
 
   if (tipo === "mensalidade") {
-    content.innerHTML = `
-      <div class="modal-header">
-        <div class="modal-header-icon">🗓️</div>
-        <div class="modal-title">Mensalidades</div>
-      </div>
-      <div class="field"><label>Membro</label>
-        <select id="membro" onchange="carregarMensalidades()"></select>
-      </div>
-      <div class="meses-label">Selecione os meses</div>
-      <div id="meses" class="meses-grid"></div>
-      <div id="confirmarArea"></div>
-    `;
-    carregarMembros(carregarMensalidades);
-  }
+      content.innerHTML = `
+        <div class="modal-header">
+          <div class="modal-header-icon">🗓️</div>
+          <div class="modal-title">Mensalidades</div>
+        </div>
+        <div class="field"><label>Membro</label>
+          <select id="membro"></select>
+        </div>
+        <div class="meses-label">Selecione os meses</div>
+        <div id="meses" class="meses-grid"></div>
+        <div id="confirmarArea"></div>
+      `;
+      carregarMembros(carregarMensalidades); // agora não carrega automaticamente
+    }
 
     if (tipo === "pagamento") {
       const hoje = new Date().toISOString().split("T")[0];
@@ -711,20 +717,32 @@ function abrirModal(tipo) {
     }
 
   if (tipo === "retirada") {
-    content.innerHTML = `
-      <div class="modal-header">
-        <div class="modal-header-icon" style="background:#f5dede">📤</div>
-        <div class="modal-title">Registrar Retirada</div>
-      </div>
-      <div class="field"><label>Valor (R$)</label>
-        <input id="valor" placeholder="0,00" type="number" oninput="validarRetirada()">
-      </div>
-      <div class="field"><label>Descrição</label>
-        <input id="desc" placeholder="Ex: Compra de material...">
-      </div>
-      <button id="btnSalvar" class="save-btn" disabled onclick="retirar()">Confirmar Retirada</button>
-    `;
-  }
+      const hoje = new Date().toISOString().split("T")[0];
+
+      content.innerHTML = `
+        <div class="modal-header">
+          <div class="modal-header-icon" style="background:#f5dede">📤</div>
+          <div class="modal-title">Registrar Retirada</div>
+        </div>
+
+        <div class="field">
+          <label>Valor (R$)</label>
+          <input id="valor" placeholder="0,00" type="number" oninput="validarRetirada()">
+        </div>
+
+        <div class="field">
+          <label>Descrição</label>
+          <input id="desc" placeholder="Ex: Compra de material..." oninput="validarRetirada()">
+        </div>
+
+        <div class="field">
+          <label>Data</label>
+          <input id="data" type="date" value="${hoje}" oninput="validarRetirada()">
+        </div>
+
+        <button id="btnSalvar" class="save-btn" disabled onclick="retirar()">Confirmar Retirada</button>
+      `;
+    }
 
   modal.classList.add("open");
 }
@@ -740,32 +758,67 @@ function fecharModal(msg = "") {
   carregarSaldoMes();
 }
 
-async function carregarMembros(callback = null) {
-  try {
-    const res = await fetch("/membros");
-    const membros = await res.json();
-    const select = document.getElementById("membro");
-    if (select) {
-      select.innerHTML = "";
-      membros.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m.id; opt.text = m.nome_completo;
-        select.appendChild(opt);
-      });
-    }
-    const el = document.getElementById("totalMembros");
-    if (el) el.innerText = membros.length;
-    if (callback) callback();
-  } catch(e) {}
+async function carregarTotalMembros() {
+  const res = await fetch("/membros");
+  const membros = await res.json();
+  const el = document.getElementById("totalMembros");
+  if (el) el.innerText = membros.length;
+}
+
+async function carregarMembros(callback) {
+  const select = document.getElementById("membro");
+  if (!select) return;
+
+  // limpa opções
+  select.innerHTML = "";
+
+  // opção padrão vazia
+  const opcaoVazia = document.createElement("option");
+  opcaoVazia.value = "";
+  opcaoVazia.text = "-- Selecione um membro --";
+  opcaoVazia.selected = true;
+  opcaoVazia.disabled = true;
+  select.appendChild(opcaoVazia);
+
+  // buscar membros da API
+  const res = await fetch("/membros");
+  let membros = await res.json();
+
+  // 🔹 ordenar alfabeticamente pelo nome
+  membros.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, "pt", { sensitivity: "base" }));
+
+  // adiciona membros no select
+  membros.forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.text = m.nome_completo;
+    select.appendChild(opt);
+  });
+
+  // chama callback quando o usuário selecionar algo
+  select.onchange = () => {
+    if (select.value) callback();
+  };
 }
 
 async function cadastrar() {
   const nome = document.getElementById("nome").value.trim();
   const telefone = document.getElementById("telefone").value;
   if (!nome) return;
-  await fetch(`/membros?nome_completo=${nome}&telefone=${telefone}`, { method: "POST" });
-  await carregarMembros();
-  fecharModal("Membro cadastrado com sucesso!");
+
+  try {
+    const res = await fetch(`/membros?nome_completo=${nome}&telefone=${telefone}`, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json();
+      mostrarToast(data.detail || "Erro ao cadastrar membro");
+      return;
+    }
+    await carregarMembros();
+    await carregarTotalMembros();
+    fecharModal("Membro cadastrado com sucesso!");
+  } catch (err) {
+    mostrarToast("Erro ao cadastrar membro");
+  }
 }
 
 async function carregarMensalidades() {
@@ -843,7 +896,11 @@ async function pagar() {
 async function retirar() {
   const valor = document.getElementById("valor").value;
   const desc = document.getElementById("desc").value;
-  await fetch(`/movimentacoes?tipo=retirada&valor=${valor}&descricao=${desc}`, { method: "POST" });
+  const data = document.getElementById("data").value;
+
+  console.log("Enviando retirada com data:", data); // debug
+
+  await fetch(`/movimentacoes?tipo=retirada&valor=${valor}&descricao=${desc}&data=${data}`, { method: "POST" });
   fecharModal("Retirada registrada!");
 }
 
@@ -888,6 +945,7 @@ function mostrarToast(texto) {
 carregarSaldo();
 carregarSaldoMes();
 carregarMembros();
+carregarTotalMembros();
 
 // ── HISTÓRICO ──
 function fecharHistoricoPorOverlay(e) {
@@ -999,22 +1057,25 @@ async function filtrarHistorico() {
       const div = document.createElement("div");
       div.className = "hist-item " + (entrada ? "entrada" : "saida");
       div.innerHTML = `
-        <div class="hist-item-icon">${entrada ? "💵" : "📤"}</div>
-        <div class="hist-item-info">
-            <div class="hist-item-desc">
-              ${
-                item.descricao
-                  ? item.descricao
-                  : item.tipo === "mensalidade"
-                    ? "Mensalidade"
-                    : entrada
-                      ? "Entrada"
-                      : "Retirada"
-              }
-            </div>
-        </div>
-        <div class="hist-item-valor">${entrada ? "+" : "−"} R$ ${Number(item.valor).toFixed(2).replace(".",",")}</div>
-      `;
+      <div class="hist-item-icon">${entrada ? "💵" : "📤"}</div>
+      <div class="hist-item-info">
+          <div class="hist-item-desc">
+            ${
+              item.descricao
+                ? item.descricao
+                : item.tipo === "mensalidade"
+                  ? "Mensalidade"
+                  : entrada
+                    ? "Entrada"
+                    : "Retirada"
+            }
+          </div>
+          <div class="hist-item-data" style="font-size:0.8em; color:#666;">
+            ${dataStr ? dataStr : "—"}
+          </div>
+      </div>
+      <div class="hist-item-valor">${entrada ? "+" : "−"} R$ ${Number(item.valor).toFixed(2).replace(".",",")}</div>
+    `;
       lista.appendChild(div);
     });
 

@@ -6,28 +6,31 @@ import uuid
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException
+import os
+import json
 
 
 app = FastAPI()
-
-# ANTIGO app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
 
 @app.get("/")
 def home():
     return FileResponse("static/index.html")
 
 # conexão com Google Sheets
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-
 def conectar_sheets():
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        "credentials.json", scope
-    )
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    # 🔹 pega JSON da credencial como string da variável de ambiente
+    cred_json_str = os.getenv("GSHEET_CREDENTIALS")
+    if not cred_json_str:
+        raise Exception("Variável de ambiente GSHEET_CREDENTIALS não encontrada")
+
+    creds_dict = json.loads(cred_json_str)
+
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open("uphiplc_db")
     return sheet
@@ -42,11 +45,22 @@ try:
 except Exception as e:
     print("❌ Erro ao conectar:", e)
 
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+#app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+
 # 📌 criar membro
 @app.post("/membros")
 def criar_membro(nome_completo: str, telefone: str = ""):
-    if not nome_completo.strip():
+    nome_completo = nome_completo.strip()
+    if not nome_completo:
         raise HTTPException(status_code=400, detail="Nome é obrigatório")
+
+    # 🔹 Verifica se já existe
+    membros = membros_sheet.get_all_records()
+    if any(m["nome_completo"].strip().lower() == nome_completo.lower() for m in membros):
+        raise HTTPException(status_code=400, detail="Já existe um membro com esse nome")
 
     novo_id = str(uuid.uuid4())
 
@@ -64,23 +78,38 @@ def criar_membro(nome_completo: str, telefone: str = ""):
 def listar_membros():
     return membros_sheet.get_all_records()
 
-# 📌 registrar movimentação
 @app.post("/movimentacoes")
-def criar_mov(tipo: str, valor: float, membro_id: str = "", descricao: str = "", mes_referencia: str = ""):
+def criar_mov(tipo: str, valor: str, membro_id: str = "", descricao: str = "", mes_referencia: str = "", data: str = None):
     novo_id = str(uuid.uuid4())
+
+    # 🔹 converte valor para float, aceita vírgula ou ponto
+    try:
+        valor_str = str(valor.replace(",", "."))
+    except:
+        raise HTTPException(status_code=400, detail="Valor inválido")
+
+    # 🔹 hora atual
+    hora_atual = datetime.now().time()
+
+    if data:
+        dt = datetime.strptime(data, "%Y-%m-%d")
+        dt_completa = datetime.combine(dt.date(), hora_atual)
+    else:
+        dt_completa = datetime.now()
+
+    data_para_sheet = dt_completa.strftime("%Y-%m-%d %H:%M:%S")
 
     mov_sheet.append_row([
         novo_id,
         tipo,
         membro_id,
-        valor,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        valor_str,
+        data_para_sheet,
         descricao,
         mes_referencia
     ])
 
     return {"message": "Movimentação registrada"}
-
 # 📌 listar movimentações
 @app.get("/movimentacoes")
 def listar_mov(mes: int = None, ano: int = None):
